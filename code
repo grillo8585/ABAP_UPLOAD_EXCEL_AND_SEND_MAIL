@@ -1,0 +1,422 @@
+REPORT ZSERKAN_O_UPLOAD_EXCEL_MAIL.
+
+
+*C:\Users\Acer V17 Nitro\Desktop\Siparis.xlsx
+
+TABLES: ZSB_T_MALZ.
+
+DATA: BEGIN OF GT_EXCEL OCCURS 0,
+        MALZEME_NO      LIKE ZSB_T_MALZ-MALZEME_NO,
+        MALZEME_ADI     LIKE ZSB_T_MALZ-MALZEME_ADI,
+        MALZEME_MIKTARI LIKE ZSB_T_MALZ-MALZEME_MIKTARI,
+      END OF GT_EXCEL.
+
+DATA:BEGIN OF GT_LIST OCCURS 0,
+       MALZEME_NO      LIKE GT_EXCEL-MALZEME_NO,
+       MALZEME_ADI     LIKE GT_EXCEL-MALZEME_ADI,
+       MALZEME_MIKTARI LIKE GT_EXCEL-MALZEME_MIKTARI,
+     END OF GT_LIST.
+
+DATA: GT_FCAT          TYPE SLIS_T_FIELDCAT_ALV,
+      GS_FCAT          LIKE LINE OF GT_FCAT,
+      GS_LAYO          TYPE SLIS_LAYOUT_ALV,
+      I_STRUCTURE_NAME LIKE  DD02L-TABNAME.
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK B1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: P_PATH LIKE RLGRAP-FILENAME OBLIGATORY DEFAULT 'C:\Users\Acer V17 Nitro\Desktop\Siparis.xlsx'.
+PARAMETERS: P_EMAIL(50) TYPE C DEFAULT 'serkanbasdag@hotmail.com'.
+PARAMETERS: P_KUNNR LIKE VBAK-KUNNR DEFAULT '0001200026',
+            P_AUART LIKE VBAK-AUART DEFAULT 'Z001'.
+SELECTION-SCREEN: END OF BLOCK B1.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_PATH.
+  PERFORM GET_FILE_PATH.
+
+START-OF-SELECTION.
+  PERFORM UPLOAD_EXCEL.
+  PERFORM SET_DATA.
+
+END-OF-SELECTION.
+  PERFORM FIELDCAT.
+  PERFORM LAYOUT.
+  PERFORM DISPLAY.
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_FILE_PATH
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_FILE_PATH .
+  DATA : LV_SUBRC LIKE SY-SUBRC,
+         LT_PATH  TYPE FILETABLE.
+
+  CALL METHOD CL_GUI_FRONTEND_SERVICES=>FILE_OPEN_DIALOG
+    EXPORTING
+      WINDOW_TITLE     = 'Select Source Excel File'
+      DEFAULT_FILENAME = '*.xls'
+      MULTISELECTION   = ' '
+    CHANGING
+      FILE_TABLE       = LT_PATH
+      RC               = LV_SUBRC.
+
+  LOOP AT LT_PATH INTO P_PATH.
+  ENDLOOP.
+ENDFORM.                    " GET_FILE_PATH
+*&---------------------------------------------------------------------*
+*&      Form  UPLOAD_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM UPLOAD_EXCEL .
+  DATA: LT_RAW TYPE TRUXS_T_TEXT_DATA.
+
+  CLEAR:GT_EXCEL,GT_EXCEL[].
+
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+    EXPORTING
+      I_TAB_RAW_DATA       = LT_RAW
+      I_FILENAME           = P_PATH
+      I_LINE_HEADER        = 'X'
+    TABLES
+      I_TAB_CONVERTED_DATA = GT_EXCEL
+    EXCEPTIONS
+      CONVERSION_FAILED    = 1
+      OTHERS               = 2.
+  IF SY-SUBRC <> 0.
+    MESSAGE 'Excel yüklenemedi! Dosya açık olabilir!'
+       TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.                    " UPLOAD_EXCEL
+*&---------------------------------------------------------------------*
+*&      Form  SET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SET_DATA .
+  CLEAR:GT_LIST,GT_LIST[].
+
+  LOOP AT GT_EXCEL.
+    GT_LIST-MALZEME_NO = GT_EXCEL-MALZEME_NO.
+    GT_LIST-MALZEME_ADI = GT_EXCEL-MALZEME_ADI.
+    GT_LIST-MALZEME_MIKTARI = GT_EXCEL-MALZEME_MIKTARI.
+    APPEND GT_LIST.
+    CLEAR GT_LIST.
+  ENDLOOP.
+ENDFORM.                    " SET_DATA
+*&---------------------------------------------------------------------*
+*&      Form  FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM FIELDCAT .
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      I_PROGRAM_NAME         = SY-REPID
+*     I_INTERNAL_TABNAME     = 'GT_LIST'
+      I_CLIENT_NEVER_DISPLAY = 'X'
+      I_INCLNAME             = SY-REPID
+      I_BYPASSING_BUFFER     = 'X'
+      I_STRUCTURE_NAME       = 'ZSB_T_MALZ'
+    CHANGING
+      CT_FIELDCAT            = GT_FCAT
+    EXCEPTIONS
+      INCONSISTENT_INTERFACE = 1
+      PROGRAM_ERROR          = 2
+      OTHERS                 = 3.
+  IF SY-SUBRC <> 0.
+  ENDIF.
+
+
+ENDFORM.                    " FIELDCAT
+*&---------------------------------------------------------------------*
+*&      Form  LAYOUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM LAYOUT .
+  GS_LAYO-COLWIDTH_OPTIMIZE = 'X'.
+  GS_LAYO-ZEBRA = 'X'.
+ENDFORM.                    " LAYOUT
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      I_BYPASSING_BUFFER       = 'X'
+      I_CALLBACK_PROGRAM       = SY-REPID
+      IS_LAYOUT                = GS_LAYO
+      IT_FIELDCAT              = GT_FCAT
+      I_CALLBACK_USER_COMMAND  = 'USER_COMMAND'
+      I_CALLBACK_PF_STATUS_SET = 'PFSTATUS'
+      I_SAVE                   = 'A'
+    TABLES
+      T_OUTTAB                 = GT_LIST
+    EXCEPTIONS
+      PROGRAM_ERROR            = 1
+      OTHERS                   = 2.
+  IF SY-SUBRC <> 0.
+  ENDIF.
+
+ENDFORM.
+
+FORM USER_COMMAND USING R_UCOMM TYPE SY-UCOMM RS_SELFIELD TYPE
+SLIS_SELFIELD.
+
+  CASE R_UCOMM.
+    WHEN 'MAIL'.
+      PERFORM SEND_MAIL.
+
+  ENDCASE.
+
+ENDFORM.
+
+FORM PFSTATUS USING UT_EXTAB TYPE SLIS_T_EXTAB.
+
+  SET PF-STATUS 'STANDARD_FULLSCREEN' .
+
+ENDFORM. " PF_STATUS_SET
+" DISPLAY
+*&---------------------------------------------------------------------*
+*&      Form  SEND_MAIL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SEND_MAIL .
+
+    DATA:
+* Order partners
+    LI_ORDER_PARTNERS  TYPE STANDARD TABLE OF BAPIPARNR,
+    L_ORDER_PARTNERS   LIKE BAPIPARNR,
+* Structures for order header
+    L_ORDER_HEADER_IN  LIKE BAPISDHD1,
+    L_ORDER_HEADER_INX LIKE BAPISDHD1X,
+* Tables for order items
+    LI_ORDER_ITEMS_IN  TYPE STANDARD TABLE OF BAPISDITM,
+    L_ORDER_ITEMS_IN   LIKE BAPISDITM,
+    LI_ORDER_ITEMS_INX TYPE STANDARD TABLE OF BAPISDITMX,
+    L_ORDER_ITEMS_INX  LIKE BAPISDITMX,
+* Return table from bapi call
+    LI_RETURN          TYPE STANDARD TABLE OF BAPIRET2,
+    L_RETURN           TYPE BAPIRET2,
+* Sales document number
+    L_VBELN            LIKE BAPIVBELN-VBELN.
+
+  L_ORDER_PARTNERS-PARTN_ROLE = 'AG'.
+  L_ORDER_PARTNERS-PARTN_NUMB = P_KUNNR. APPEND L_ORDER_PARTNERS TO LI_ORDER_PARTNERS.
+
+  L_ORDER_PARTNERS-PARTN_ROLE = 'WE'.
+  L_ORDER_PARTNERS-PARTN_NUMB = P_KUNNR. APPEND L_ORDER_PARTNERS TO LI_ORDER_PARTNERS.
+
+  L_ORDER_HEADER_IN-DOC_TYPE = P_AUART.
+  L_ORDER_HEADER_INX-DOC_TYPE = 'X'.
+  L_ORDER_HEADER_INX-UPDATEFLAG = 'I'.
+
+
+  L_ORDER_ITEMS_IN-ITM_NUMBER = GT_EXCEL-MALZEME_NO.
+  L_ORDER_ITEMS_IN-MATERIAL = 'M01'.
+  L_ORDER_ITEMS_IN-TARGET_QTY = GT_EXCEL-MALZEME_MIKTARI. APPEND L_ORDER_ITEMS_IN TO LI_ORDER_ITEMS_IN.
+
+  L_ORDER_ITEMS_INX-ITM_NUMBER = GT_EXCEL-MALZEME_NO.
+  L_ORDER_ITEMS_INX-UPDATEFLAG = 'I'.
+  L_ORDER_ITEMS_INX-MATERIAL = 'X'.
+  L_ORDER_ITEMS_INX-TARGET_QTY = 'X'. APPEND L_ORDER_ITEMS_INX TO LI_ORDER_ITEMS_INX.
+
+
+
+
+  CALL FUNCTION 'BAPI_SALESORDER_CREATEFROMDAT2'
+    EXPORTING
+      ORDER_HEADER_IN  = L_ORDER_HEADER_IN
+      ORDER_HEADER_INX = L_ORDER_HEADER_INX
+*     testrun          = ‘X’
+    IMPORTING
+      SALESDOCUMENT    = L_VBELN "satış siparişi belge numarası
+    TABLES
+      RETURN           = LI_RETURN
+      ORDER_ITEMS_IN   = LI_ORDER_ITEMS_IN
+      ORDER_ITEMS_INX  = LI_ORDER_ITEMS_INX
+      ORDER_PARTNERS   = LI_ORDER_PARTNERS.
+
+  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+    EXPORTING
+      WAIT = 'X'.
+
+"""""""""""""""""""""""""
+  FIELD-SYMBOLS: <FIELD> TYPE ANY.
+
+  DATA : BEGIN OF I_DLOAD OCCURS 0 ,
+           DLOAD(1000) ,
+         END OF I_DLOAD ,
+
+         IT_RECEIVERS     LIKE SOMLRECI1 OCCURS 1 WITH HEADER LINE,
+         W_OBJECT_CONTENT LIKE SOLISTI1 OCCURS 1 WITH HEADER LINE,
+         W_DOC_DATA       LIKE SODOCCHGI1 OCCURS 0 WITH HEADER LINE,
+         W_RSNUM(10),
+         W_BDMNG(14),
+         W_MEINS(4),
+
+*---for e_mail address
+         WS_EMAIL         LIKE ADR6-SMTP_ADDR,
+
+*--Internal table declaration
+         IT_OBJPACK       LIKE SOPCKLSTI1 OCCURS 2 WITH HEADER LINE,
+         IT_OBJHEAD       LIKE SOLISTI1 OCCURS 1 WITH HEADER LINE,
+         IT_OBJBIN        LIKE SOLISTI1 OCCURS 10 WITH HEADER LINE,
+         IT_OBJTXT        LIKE SOLISTI1 OCCURS 10 WITH HEADER LINE,
+         IT_RECLIST       LIKE SOMLRECI1 OCCURS 5 WITH HEADER LINE,
+         DOC_CHNG         LIKE SODOCCHGI1,
+         TAB_LINES        LIKE SY-TABIX,
+         W_LONGTEXT(255)  TYPE C,
+         V_DATE(10)       TYPE C,
+         TEXT(200)        TYPE C,
+         W_TEXT(50)       TYPE C,
+
+*---declaration for diaplaying msg in the body of mail.
+         W_MSGA(18)       TYPE C,
+         W_MSGB(22)       TYPE C,
+         W_MSGC(27)       TYPE C.
+
+*--Get receipient address
+  CLEAR IT_RECLIST.
+
+*---passing e_mail address
+  WS_EMAIL = P_EMAIL.
+
+  IF P_EMAIL IS NOT INITIAL.
+* build body of message
+    CONCATENATE 'Siparis Numarasi: ' L_VBELN ' ' INTO IT_OBJTXT
+    SEPARATED BY SPACE.
+    APPEND IT_OBJTXT.
+    CLEAR IT_OBJTXT.
+    IT_RECLIST-RECEIVER = WS_EMAIL.
+    IT_RECLIST-REC_TYPE = 'U'.
+    IT_RECLIST-EXPRESS  = ' '.
+    IT_RECLIST-COM_TYPE = 'INT'.
+    APPEND IT_RECLIST.
+*--Set title of object and email
+    CLEAR: W_TEXT.
+    DOC_CHNG-OBJ_DESCR = 'ABAP TEST SEND MAIL'.
+    DOC_CHNG-OBJ_NAME  = 'INBOUND'.
+    DESCRIBE TABLE IT_OBJTXT LINES TAB_LINES.
+    READ TABLE IT_OBJTXT INDEX TAB_LINES.
+    DOC_CHNG-DOC_SIZE = ( TAB_LINES - 1 ) * 255 + STRLEN( IT_OBJTXT ).
+*--Append Blank Lines
+    APPEND IT_OBJBIN. CLEAR IT_OBJBIN.
+    APPEND IT_OBJBIN. CLEAR IT_OBJBIN.
+**--User name
+    CLEAR TEXT.
+*      MOVE: 'User:'  TO TEXT, SY-UNAME TO TEXT+6,
+      MOVE: 'Siparis Detayi' TO TEXT.
+
+    IT_OBJBIN = TEXT.
+    APPEND IT_OBJBIN. CLEAR IT_OBJBIN.
+
+    LOOP AT GT_LIST.
+      DO.
+        ASSIGN COMPONENT SY-INDEX OF STRUCTURE GT_LIST TO <FIELD>.
+        IF SY-SUBRC <> 0.
+          EXIT.
+        ENDIF.
+
+        SEARCH <FIELD> FOR ',' IN CHARACTER MODE.
+
+        IF SY-SUBRC = 0.
+          CONCATENATE '"' <FIELD> '"' INTO <FIELD> IN CHARACTER MODE.
+        ENDIF.
+        IF SY-INDEX = 1.
+          I_DLOAD-DLOAD = <FIELD>.
+          SHIFT: I_DLOAD-DLOAD  LEFT DELETING LEADING SPACE.
+        ELSE.
+          SHIFT: I_DLOAD-DLOAD  LEFT DELETING LEADING SPACE.
+          CONCATENATE I_DLOAD-DLOAD <FIELD> INTO I_DLOAD-DLOAD
+                      SEPARATED BY ',' IN CHARACTER MODE.
+        ENDIF.
+      ENDDO.
+      IT_OBJBIN = I_DLOAD-DLOAD.
+      APPEND IT_OBJBIN. CLEAR IT_OBJBIN.
+    ENDLOOP.
+*
+*     MOVE: 'Siparis Numarasi: '  TO TEXT, L_VBELN TO TEXT+25.
+*    IT_OBJBIN = TEXT.
+*    APPEND IT_OBJBIN. CLEAR IT_OBJBIN.
+  ENDIF.
+*  ENDIF.
+
+*Convert to correct format
+  CALL FUNCTION 'SO_RAW_TO_RTF'
+    TABLES
+      OBJCONT_OLD = IT_OBJBIN
+      OBJCONT_NEW = IT_OBJBIN.
+
+* create the control table entry for the main email
+  DESCRIBE TABLE IT_OBJTXT LINES TAB_LINES.
+  CLEAR IT_OBJPACK-TRANSF_BIN.
+  IT_OBJPACK-HEAD_START = 1.
+  IT_OBJPACK-HEAD_NUM   = 0.
+  IT_OBJPACK-BODY_START = 1.
+  IT_OBJPACK-BODY_NUM   = TAB_LINES.
+  IT_OBJPACK-DOC_TYPE   = 'RAW'.
+  APPEND IT_OBJPACK.
+
+  DESCRIBE TABLE IT_OBJBIN LINES TAB_LINES.
+  IT_OBJPACK-HEAD_START = 1.
+  IT_OBJPACK-HEAD_NUM   = 0.
+  IT_OBJPACK-BODY_START = 1.
+  IT_OBJPACK-BODY_NUM   = TAB_LINES.
+  IT_OBJPACK-TRANSF_BIN = 'X'."'C'.
+  IT_OBJPACK-DOC_TYPE   = 'CSV'.
+  IT_OBJPACK-OBJ_DESCR  = 'Siparis'.
+  IT_OBJPACK-OBJ_NAME   = 'BILLING'.
+  IT_OBJPACK-DOC_SIZE   = TAB_LINES * 255.
+  APPEND IT_OBJPACK.
+
+  CALL FUNCTION 'SO_NEW_DOCUMENT_ATT_SEND_API1'
+    EXPORTING
+      DOCUMENT_DATA              = DOC_CHNG
+*     PUT_IN_OUTBOX              = c_x
+      COMMIT_WORK                = 'X'
+    TABLES
+      PACKING_LIST               = IT_OBJPACK
+      CONTENTS_BIN               = IT_OBJBIN
+      CONTENTS_TXT               = IT_OBJTXT
+      RECEIVERS                  = IT_RECLIST
+    EXCEPTIONS
+      TOO_MANY_RECEIVERS         = 1
+      DOCUMENT_NOT_SENT          = 2
+      OPERATION_NO_AUTHORIZATION = 4
+      OTHERS                     = 99.
+  IF SY-SUBRC <> 0.
+    MESSAGE : 'Mail Gönderimi Başarısız' TYPE 'A'.
+  ELSE.
+    MESSAGE: L_VBELN TYPE 'I'.
+        MESSAGE: 'Mail Gönderimi Başarılı' TYPE 'S'.
+  ENDIF.
+ENDFORM.
